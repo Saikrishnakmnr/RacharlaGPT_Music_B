@@ -1,0 +1,43 @@
+import crypto from 'node:crypto';
+
+const env=(n,f='')=>process.env[n]||f;
+const ENDPOINT=env('APPWRITE_ENDPOINT'), PROJECT=env('APPWRITE_PROJECT_ID'), KEY=env('APPWRITE_API_KEY');
+const DB=env('APPWRITE_DATABASE_ID','music'), ORDERS=env('APPWRITE_ORDERS_TABLE','orders'), FILES=env('APPWRITE_FILES_TABLE','order_files'), EVENTS=env('APPWRITE_EVENTS_TABLE','order_events');
+const BUCKET=env('APPWRITE_STORAGE_BUCKET','order-files'), RZP_ID=env('RAZORPAY_KEY_ID'), RZP_SECRET=env('RAZORPAY_KEY_SECRET');
+const SITE=env('SITE_URL','https://songs.racharlagpt.in'), NORMAL=Number(env('NORMAL_PRICE','499')), CAMPAIGN=Number(env('CAMPAIGN_PRICE','99'));
+const CAMPAIGN_NAME=env('CAMPAIGN_NAME','Vinayaka Chavithi Special'), START=env('CAMPAIGN_START'), END=env('CAMPAIGN_END');
+const cors={'Access-Control-Allow-Origin':SITE,'Access-Control-Allow-Headers':'Content-Type,X-Access-Token,X-File-Type,X-File-Name','Access-Control-Allow-Methods':'GET,POST,OPTIONS'};
+const json=(res,d,s=200)=>res.json(d,s,cors), bad=(res,m,s=400)=>json(res,{error:m},s);
+function active(){if(!START||!END)return false;const s=new Date(START),e=new Date(END);return Number.isFinite(s.getTime())&&Number.isFinite(e.getTime())&&new Date()>=s&&new Date()<=e}
+function price(){return active()?CAMPAIGN:NORMAL}
+function orderNo(){return `RM-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`}
+function token(){return crypto.randomBytes(24).toString('base64url')}
+function hash(t){return crypto.createHash('sha256').update(t).digest('hex')}
+function same(a,b){if(!a||!b||a.length!==b.length)return false;return crypto.timingSafeEqual(Buffer.from(a),Buffer.from(b))}
+async function aw(path,opt={}){if(!ENDPOINT||!PROJECT||!KEY)throw Error('Appwrite environment is not configured');const r=await fetch(ENDPOINT.replace(/\/$/,'')+'/v1'+path,{...opt,headers:{'X-Appwrite-Project':PROJECT,'X-Appwrite-Key':KEY,...(opt.headers||{})}});const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{d={raw:t}}if(!r.ok)throw Error(`Appwrite ${r.status}: ${d.message||t}`);return d}
+const q=(a,v)=>encodeURIComponent(`equal(\"${a}\",${JSON.stringify([String(v)])})`);
+async function rows(table,query){return (await aw(`/tablesdb/${DB}/tables/${table}/rows?queries[]=${query}&limit=100`)).rows||[]}
+async function create(table,data){return aw(`/tablesdb/${DB}/tables/${table}/rows`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rowId:'unique()',data})})}
+async function update(table,id,data){return aw(`/tablesdb/${DB}/tables/${table}/rows/${encodeURIComponent(id)}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({data})})}
+async function orderByNo(no,access){const r=(await rows(ORDERS,q('order_number',no)))[0];if(!r||!same(hash(access||''),r.access_token_hash||''))return null;return r}
+async function rzpOrder(receipt,amount){const auth='Basic '+Buffer.from(`${RZP_ID}:${RZP_SECRET}`).toString('base64');const r=await fetch('https://api.razorpay.com/v1/orders',{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify({amount:Math.round(amount*100),currency:'INR',receipt,notes:{source:'RacharlaGPT Music',order_number:receipt}})});const d=await r.json();if(!r.ok)throw Error(d.error?.description||'Payment order creation failed');return d}
+async function fileToken(fileId){const exp=new Date(Date.now()+24*60*60*1000).toISOString();const d=await aw(`/tokens/buckets/${BUCKET}/files/${encodeURIComponent(fileId)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expire:exp})});return `${ENDPOINT.replace(/\/$/,'')}/v1/storage/buckets/${encodeURIComponent(BUCKET)}/files/${encodeURIComponent(fileId)}/download?project=${encodeURIComponent(PROJECT)}&token=${encodeURIComponent(d.secret)}`}
+async function event(order,event){try{await create(EVENTS,{order_number:order,event,created_at:new Date().toISOString()})}catch{} }
+function safe(o,messages=[]){return{order_number:o.order_number,customer_name:o.customer_name,email:o.email,occasion:o.occasion,status:o.status,payment_status:o.payment_status,price:o.price,campaign:o.campaign,created_at:o.created_at,paid_at:o.paid_at||null,revision_count:o.revision_count||0,song_ready:o.status==='READY'||o.status==='DELIVERED',messages}}
+export default async({req,res,error})=>{try{
+ if(req.method==='OPTIONS')return json(res,{});
+ const path=req.path||'/';
+ if(req.method==='GET'&&path==='/pricing')return json(res,{price:price(),normal_price:NORMAL,campaign_active:active(),campaign_name:active()?CAMPAIGN_NAME:null,currency:'INR'});
+ if(req.method==='POST'&&path==='/orders'){
+  const b=req.bodyJson||{},name=String(b.customer_name||'').trim(),email=String(b.email||'').trim().toLowerCase(),occasion=String(b.occasion||'').trim(),description=String(b.description||'').trim(),input=String(b.input_method||'type');
+  if(!name||!email||!occasion)return bad(res,'Name, email and occasion are required'); if(!/^\S+@\S+\.\S+$/.test(email))return bad(res,'Enter a valid email'); if(!['type','upload','voice'].includes(input))return bad(res,'Invalid input method');
+  const n=orderNo(),t=token(),amount=price(),campaign=active()?CAMPAIGN_NAME:'Standard',rzp=await rzpOrder(n,amount);
+  await create(ORDERS,{order_number:n,customer_name:name,email,occasion,input_method:input,description,status:'ORDER_RECEIVED',payment_status:'PENDING',price:amount,campaign,razorpay_order_id:rzp.id,access_token_hash:hash(t),created_at:new Date().toISOString(),revision_count:0,download_count:0}); await event(n,'ORDER_CREATED');
+  return json(res,{order_number:n,access_token:t,amount,currency:'INR',campaign,campaign_active:active(),razorpay:{order_id:rzp.id,key_id:RZP_ID},track_url:`${SITE}/track.html?order=${encodeURIComponent(n)}&token=${encodeURIComponent(t)}`});
+ }
+ let m=path.match(/^\/orders\/([^/]+)$/); if(req.method==='GET'&&m){const no=decodeURIComponent(m[1]),t=req.headers['x-access-token']||new URLSearchParams(req.queryString||'').get('token'),o=await orderByNo(no,t);if(!o)return bad(res,'Order not found',404);const ms=await rows('messages',q('order_number',no)).catch(()=>[]);return json(res,safe(o,ms.map(x=>({sender_role:x.sender_role,body:x.body,created_at:x.created_at}))));}
+ m=path.match(/^\/orders\/([^/]+)\/files$/); if(req.method==='POST'&&m){const no=decodeURIComponent(m[1]),o=await orderByNo(no,req.headers['x-access-token']);if(!o)return bad(res,'Order not found',404);const type=req.headers['x-file-type'],name=(req.headers['x-file-name']||'upload.bin').replace(/[^a-zA-Z0-9._-]/g,'_'),bytes=req.bodyBinary;if(!['voice','paper'].includes(type))return bad(res,'Invalid file type');if(!bytes?.length||bytes.length>12*1024*1024)return bad(res,'File is empty or too large');const f=new FormData();f.append('fileId','unique()');f.append('file',new Blob([bytes],{type:req.headers['content-type']||'application/octet-stream'}),name);const up=await aw(`/storage/buckets/${BUCKET}/files`,{method:'POST',body:f});await create(FILES,{order_number:no,type,file_id:up.$id,file_name:name,created_at:new Date().toISOString()});await update(ORDERS,o.$id,{status:'REQUIREMENTS_RECEIVED'});await event(no,'REQUIREMENTS_RECEIVED');return json(res,{ok:true,file_id:up.$id});}
+ m=path.match(/^\/orders\/([^/]+)\/messages$/); if(req.method==='POST'&&m){const no=decodeURIComponent(m[1]),o=await orderByNo(no,req.headers['x-access-token']);if(!o)return bad(res,'Order not found',404);const body=String((req.bodyJson||{}).body||'').trim();if(!body||body.length>2000)return bad(res,'Message is empty or too long');await create('messages',{order_number:no,sender_role:'customer',body,created_at:new Date().toISOString()});return json(res,{ok:true});}
+ m=path.match(/^\/orders\/([^/]+)\/song$/); if(req.method==='GET'&&m){const no=decodeURIComponent(m[1]),o=await orderByNo(no,req.headers['x-access-token']||new URLSearchParams(req.queryString||'').get('token'));if(!o||!['READY','DELIVERED'].includes(o.status))return bad(res,'Song is not ready',404);const fs=(await rows(FILES,q('order_number',no))).filter(x=>x.type==='mp3').sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));if(!fs[0])return bad(res,'Song file not found',404);const url=await fileToken(fs[0].file_id);await update(ORDERS,o.$id,{download_count:Number(o.download_count||0)+1,last_download_at:new Date().toISOString(),status:o.status==='READY'?'DELIVERED':o.status});await event(no,'SONG_DOWNLOAD_LINK_OPENED');return json(res,{ok:true,file_name:fs[0].file_name,url});}
+ return bad(res,'Route not found',404);
+}catch(e){error(e?.stack||String(e));return bad(res,'Server error',500)}};
