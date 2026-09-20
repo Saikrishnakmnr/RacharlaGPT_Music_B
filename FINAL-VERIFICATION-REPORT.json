@@ -1,0 +1,26 @@
+{
+  "required_missing": [],
+  "broken_html_refs": [],
+  "js_syntax_errors": [],
+  "json_errors": [],
+  "sequence_checks": {
+    "order_api_create": true,
+    "razorpay_server_order": true,
+    "webhook_signature": true,
+    "private_access_hash": true,
+    "file_token_delivery": true,
+    "admin_auth": true,
+    "mp3_upload": true,
+    "customer_messages": true,
+    "campaign_config": true,
+    "ga4": true,
+    "adsense": true,
+    "monetag": true,
+    "brand": true,
+    "tagline": true,
+    "youtube": true,
+    "email": true,
+    "correct_domain": true,
+    "frontend_no_server_secrets": true
+  }
+}

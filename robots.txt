@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /create.html
+Disallow: /payment.html
+Disallow: /success.html
+Disallow: /track.html
+Disallow: /song.html
+Disallow: /admin/
+Sitemap: https://songs.racharlagpt.in/sitemap.xml
