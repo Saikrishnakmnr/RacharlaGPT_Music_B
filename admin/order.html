@@ -1,1 +1,385 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Order | RacharlaGPT Music</title><link rel="stylesheet" href="/css/style.css"></head><body><header class="site-header"><a class="brand" href="/admin/dashboard.html">← Admin</a></header><main class="form-page"><section class="form-shell"><div class="eyebrow">ORDER</div><h1 id="title">Loading…</h1><div id="details"></div><label>Status<select id="status"><option>ORDER_RECEIVED</option><option>PAYMENT_VERIFIED</option><option>REQUIREMENTS_RECEIVED</option><option>IN_PRODUCTION</option><option>QUALITY_CHECK</option><option>READY</option><option>DELIVERED</option><option>NEEDS_MORE_INFORMATION</option><option>REVISION_REQUESTED</option></select></label><button class="btn primary wide" id="save">Save Status</button><label>Final MP3<input id="mp3" type="file" accept="audio/mpeg,.mp3"></label><button class="btn secondary wide" id="upload">Upload MP3 & Mark Ready</button><label>Message customer<textarea id="message" rows="5"></textarea></label><button class="btn secondary wide" id="send">Send Message</button><p id="msg" class="form-message"></p></section></main><script src="/js/config.js"></script><script>const api=window.RGM_CONFIG.ADMIN_API_BASE,t=sessionStorage.getItem('rgm_admin_token'),order=new URL(location.href).searchParams.get('order');if(!t||!order)location.href='/admin/';const h={Authorization:'Bearer '+t};async function load(){const r=await fetch(api+'/orders/'+encodeURIComponent(order),{headers:h});if(r.status===401){location.href='/admin/';return}const d=await r.json();document.getElementById('title').textContent=d.order.order_number;document.getElementById('status').value=d.order.status;document.getElementById('details').innerHTML=`<p><b>${d.order.customer_name}</b> · ${d.order.email}</p><p>${d.order.occasion} · ₹${d.order.price} · ${d.order.payment_status}</p><p>Revisions: ${d.order.revision_count||0}</p><hr><h3>Messages</h3>`+(d.messages||[]).map(x=>`<p><b>${x.sender_role}</b>: ${x.body}</p>`).join('')}async function act(url,opts){const r=await fetch(api+url,{...opts,headers:{...h,...(opts.headers||{})}});const d=await r.json();if(!r.ok)throw Error(d.error||'Request failed');return d}document.getElementById('save').onclick=async()=>{try{await act('/orders/'+encodeURIComponent(order),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:document.getElementById('status').value})});document.getElementById('msg').textContent='Status saved.';load()}catch(e){document.getElementById('msg').textContent=e.message}};document.getElementById('upload').onclick=async()=>{try{const f=document.getElementById('mp3').files[0];if(!f)throw Error('Choose an MP3 first.');await act('/orders/'+encodeURIComponent(order)+'/mp3',{method:'POST',headers:{'Content-Type':f.type||'audio/mpeg','X-File-Name':f.name},body:f});document.getElementById('msg').textContent='Song uploaded and marked READY.';load()}catch(e){document.getElementById('msg').textContent=e.message}};document.getElementById('send').onclick=async()=>{try{const body=document.getElementById('message').value.trim();if(!body)throw Error('Enter a message.');await act('/orders/'+encodeURIComponent(order)+'/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({body})});document.getElementById('message').value='';document.getElementById('msg').textContent='Message sent.';load()}catch(e){document.getElementById('msg').textContent=e.message}};load();</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+
+  <meta charset="utf-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  >
+
+  <meta
+    name="robots"
+    content="noindex,nofollow"
+  >
+
+  <title>Order | RacharlaGPT Music</title>
+
+  <link
+    rel="stylesheet"
+    href="/css/style.css"
+  >
+
+</head>
+
+<body>
+
+<header class="site-header">
+  <a
+    class="brand"
+    href="/admin/dashboard.html"
+  >
+    ← Admin
+  </a>
+</header>
+
+<main class="form-page">
+
+  <section class="form-shell">
+
+    <div class="eyebrow">ORDER</div>
+
+    <h1 id="title">Loading…</h1>
+
+    <div id="details"></div>
+
+    <label>
+      Status
+
+      <select id="status">
+        <option>ORDER_RECEIVED</option>
+        <option>PAYMENT_VERIFIED</option>
+        <option>REQUIREMENTS_RECEIVED</option>
+        <option>IN_PRODUCTION</option>
+        <option>QUALITY_CHECK</option>
+        <option>READY</option>
+        <option>DELIVERED</option>
+        <option>NEEDS_MORE_INFORMATION</option>
+        <option>REVISION_REQUESTED</option>
+      </select>
+    </label>
+
+    <button
+      class="btn primary wide"
+      id="save"
+    >
+      Save Status
+    </button>
+
+    <label>
+      Final MP3
+      <input
+        id="mp3"
+        type="file"
+        accept="audio/mpeg,.mp3"
+      >
+    </label>
+
+    <button
+      class="btn secondary wide"
+      id="upload"
+    >
+      Upload MP3 & Mark Ready
+    </button>
+
+    <label>
+      Message customer
+
+      <textarea
+        id="message"
+        rows="5"
+      ></textarea>
+    </label>
+
+    <button
+      class="btn secondary wide"
+      id="send"
+    >
+      Send Message
+    </button>
+
+    <p
+      id="msg"
+      class="form-message"
+    ></p>
+
+  </section>
+
+</main>
+
+<script src="/js/config.js"></script>
+
+<script>
+
+const api =
+  window.RGM_CONFIG.ADMIN_API_BASE;
+
+const t =
+  sessionStorage.getItem("rgm_admin_token");
+
+const order =
+  new URL(location.href)
+    .searchParams
+    .get("order");
+
+if (!t || !order) {
+  location.href = "/admin/";
+}
+
+const h = {
+  Authorization: "Bearer " + t
+};
+
+function escapeHtml(value) {
+
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+}
+
+async function load() {
+
+  const r = await fetch(
+    api +
+    "/orders/" +
+    encodeURIComponent(order),
+    {
+      headers: h
+    }
+  );
+
+  if (r.status === 401) {
+    location.href = "/admin/";
+    return;
+  }
+
+  const d = await r.json();
+
+  document.getElementById("title")
+    .textContent =
+    d.order.order_number;
+
+  document.getElementById("status")
+    .value =
+    d.order.status;
+
+  document.getElementById("details")
+    .innerHTML = `
+
+      <p>
+        <b>${escapeHtml(d.order.customer_name)}</b>
+        · ${escapeHtml(d.order.email)}
+      </p>
+
+      <p>
+        ${escapeHtml(d.order.occasion)}
+        · ₹${Number(d.order.price || 0).toLocaleString("en-IN")}
+        · ${escapeHtml(d.order.payment_status)}
+      </p>
+
+      <p>
+        Revisions:
+        ${Number(d.order.revision_count || 0)}
+      </p>
+
+      <hr>
+
+      <h3>Messages</h3>
+
+    ` +
+
+    (d.messages || [])
+      .map(x => `
+        <p>
+          <b>
+            ${
+              x.sender_type === "admin"
+                ? "Studio"
+                : "Customer"
+            }
+          </b>:
+          ${escapeHtml(x.message)}
+        </p>
+      `)
+      .join("");
+
+}
+
+async function act(url, opts) {
+
+  const r = await fetch(
+    api + url,
+    {
+      ...opts,
+      headers: {
+        ...h,
+        ...(opts.headers || {})
+      }
+    }
+  );
+
+  const d = await r.json();
+
+  if (!r.ok) {
+    throw new Error(
+      d.error || "Request failed"
+    );
+  }
+
+  return d;
+
+}
+
+document.getElementById("save").onclick =
+  async () => {
+
+    try {
+
+      await act(
+        "/orders/" +
+        encodeURIComponent(order),
+        {
+          method: "PATCH",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+            status:
+              document.getElementById("status").value
+          })
+        }
+      );
+
+      document.getElementById("msg")
+        .textContent =
+        "Status saved.";
+
+      load();
+
+    } catch (e) {
+
+      document.getElementById("msg")
+        .textContent =
+        e.message;
+
+    }
+
+  };
+
+document.getElementById("upload").onclick =
+  async () => {
+
+    try {
+
+      const f =
+        document.getElementById("mp3")
+          .files[0];
+
+      if (!f) {
+        throw new Error(
+          "Choose an MP3 first."
+        );
+      }
+
+      await act(
+        "/orders/" +
+        encodeURIComponent(order) +
+        "/mp3",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              f.type || "audio/mpeg",
+
+            "X-File-Name":
+              f.name
+          },
+
+          body: f
+        }
+      );
+
+      document.getElementById("msg")
+        .textContent =
+        "Song uploaded and marked READY.";
+
+      load();
+
+    } catch (e) {
+
+      document.getElementById("msg")
+        .textContent =
+        e.message;
+
+    }
+
+  };
+
+document.getElementById("send").onclick =
+  async () => {
+
+    try {
+
+      const body =
+        document.getElementById("message")
+          .value
+          .trim();
+
+      if (!body) {
+        throw new Error(
+          "Enter a message."
+        );
+      }
+
+      await act(
+        "/orders/" +
+        encodeURIComponent(order) +
+        "/messages",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+            body
+          })
+        }
+      );
+
+      document.getElementById("message")
+        .value = "";
+
+      document.getElementById("msg")
+        .textContent =
+        "Message sent.";
+
+      load();
+
+    } catch (e) {
+
+      document.getElementById("msg")
+        .textContent =
+        e.message;
+
+    }
+
+  };
+
+load();
+
+</script>
+
+</body>
+</html>
