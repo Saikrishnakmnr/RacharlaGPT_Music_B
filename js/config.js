@@ -1,5 +1,8 @@
-/* Public configuration only. Replace these placeholders during deployment. */
-window.RGM_CONFIG={
-  PUBLIC_API_BASE:"https://YOUR-ORDER-API.appwrite.run",
-  ADMIN_API_BASE:"https://YOUR-ADMIN-API.appwrite.run"
+/* RacharlaGPT Music - Public configuration
+   Never put secret keys in this file.
+*/
+
+window.RGM_CONFIG = {
+  PUBLIC_API_BASE: "https://racharlagpt-music-b.sgp.appwrite.run",
+  ADMIN_API_BASE: "https://YOUR-ADMIN-API.appwrite.run"
 };
