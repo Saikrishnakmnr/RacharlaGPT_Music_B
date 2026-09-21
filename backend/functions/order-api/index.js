@@ -110,7 +110,13 @@ async function aw(path, opt = {}) {
 }
 
 const q = (a, v) =>
-  encodeURIComponent(`equal("${a}",${JSON.stringify([String(v)])})`);
+  encodeURIComponent(
+    JSON.stringify({
+      method: 'equal',
+      column: a,
+      values: [String(v)]
+    })
+  );
 
 async function rows(table, query) {
   return (
