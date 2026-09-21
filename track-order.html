@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Track Your Order | RacharlaGPT Music</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="music-shower" aria-hidden="true"></div>
+<header class="site-header"><a class="brand" href="/">♪ RacharlaGPT Music</a><a href="/">← Home</a></header>
+<main class="form-page">
+<section class="form-shell">
+<div class="eyebrow">PRIVATE CUSTOMER AREA</div>
+<h1>Track your order</h1>
+<p>Enter the order number and the private access token from your order link. We do not use customer accounts or passwords.</p>
+<form id="lookup">
+<label>Order number<input id="order" required placeholder="RM-20260921-XXXXXX" autocomplete="off"></label>
+<label>Private access token<input id="token" required type="password" placeholder="Paste the token from your private order link" autocomplete="off"></label>
+<button class="btn primary wide">Open My Order →</button>
+</form>
+<p id="msg" class="form-message"></p>
+<div class="notice"><strong>Where is my token?</strong><br>Your private tracking link contains it after <code>token=</code>. Keep that link private because it gives access to this order.</div>
+</section>
+</main>
+<footer>© 2026 RacharlaGPT Music · <a href="/privacy.html">Privacy</a> · <a href="/terms.html">Terms</a></footer>
+<script>
+document.getElementById('lookup').addEventListener('submit',e=>{
+  e.preventDefault();
+  const order=document.getElementById('order').value.trim(), token=document.getElementById('token').value.trim();
+  if(!order||!token)return;
+  location.href='/track.html?order='+encodeURIComponent(order)+'&token='+encodeURIComponent(token);
+});
+</script>
+</body>
+</html>

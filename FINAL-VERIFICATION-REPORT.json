@@ -1,0 +1,23 @@
+{
+  "build": "RacharlaGPT Music 360°",
+  "repository": "racharlagpt_music_b",
+  "source_checks": {
+    "javascript_syntax": "PASS",
+    "json_parsing": "PASS",
+    "html_local_references": "PASS",
+    "public_secret_name_scan": "PASS",
+    "integration_simulation": "PASS"
+  },
+  "schema_migration_required": false,
+  "live_verification_required": true,
+  "live_steps": [
+    "deploy order-api",
+    "deploy admin-api",
+    "deploy razorpay-webhook",
+    "set ADMIN_TOKEN",
+    "set RAZORPAY_WEBHOOK_SECRET",
+    "set ADMIN_API_BASE in js/config.js",
+    "configure Razorpay webhook",
+    "run one real end-to-end payment and delivery test"
+  ]
+}
