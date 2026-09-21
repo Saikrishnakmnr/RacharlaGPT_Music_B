@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Order Details | RacharlaGPT Music</title>
+<link rel="stylesheet" href="/css/style.css"><script src="/js/config.js"></script>
+</head>
+<body data-admin="true">
+<header class="site-header"><a class="brand" href="/admin/dashboard.html">← Studio Orders</a><div class="header-tools"><a class="header-link" href="/">Public site</a></div></header>
+<main class="form-page"><section class="form-shell">
+<div class="eyebrow">ORDER CONTROL CENTER</div><h1 id="title">Loading…</h1><div id="details"></div>
+<h3>Production status</h3><select id="status"><option>ORDER_RECEIVED</option><option>PAYMENT_VERIFIED</option><option>REQUIREMENTS_RECEIVED</option><option>IN_PRODUCTION</option><option>QUALITY_CHECK</option><option>READY</option><option>DELIVERED</option><option>NEEDS_MORE_INFORMATION</option><option>REVISION_REQUESTED</option></select>
+<label>Revision count<input id="revisionCount" type="number" min="0" step="1"></label>
+<label>Timeline note<textarea id="note" rows="3" maxlength="2000" placeholder="Optional note shown in the customer timeline…"></textarea></label>
+<button class="btn primary wide" id="save">Save status & note</button>
+<h3>Customer files & final delivery</h3><div id="files"></div>
+<label>Final MP3<input id="mp3" type="file" accept="audio/mpeg,.mp3"></label>
+<button class="btn secondary wide" id="upload">Upload MP3 & Mark Ready</button>
+<h3>Customer conversation</h3><div id="messages"></div>
+<label>Message customer<textarea id="message" rows="5" maxlength="2000" placeholder="Production update, clarification or delivery note…"></textarea></label>
+<button class="btn secondary wide" id="send">Send Message</button>
+<p id="msg" class="form-message"></p>
+</section></main>
+<script>
+const api=String(window.RGM_CONFIG?.ADMIN_API_BASE||'').replace(/\/$/,''),t=sessionStorage.getItem('rgm_admin_token'),order=new URL(location.href).searchParams.get('order');
+if(!t||!api||api.includes('YOUR-')||!order)location.href='/admin/';
+const h={Authorization:'Bearer '+t},esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+const fmt=v=>{try{return new Date(v).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'});}catch{return String(v||'')}};
+const label=v=>String(v||'').replaceAll('_',' ');
+let current=null;
+async function act(url,opts={}){const r=await fetch(api+url,{...opts,headers:{...h,...(opts.headers||{})},cache:'no-store'});if(r.status===401){location.href='/admin/';return;}const d=await r.json();if(!r.ok)throw Error(d.error||'Request failed');return d;}
+async function load(){
+ const d=await act('/orders/'+encodeURIComponent(order));current=d;
+ document.getElementById('title').textContent=d.order.order_number;document.getElementById('status').value=d.order.status;document.getElementById('revisionCount').value=Number(d.order.revision_count||0);
+ document.getElementById('details').innerHTML=`<div class="tool"><div class="summary-grid"><p><b>Customer</b><br>${esc(d.order.customer_name)}</p><p><b>Email</b><br>${esc(d.order.email)}</p><p><b>Occasion</b><br>${esc(d.order.occasion)}</p><p><b>Amount</b><br>₹${Number(d.order.price||0).toLocaleString('en-IN')}</p><p><b>Payment</b><br>${esc(d.order.payment_status)}${d.order.paid_at?' · '+esc(fmt(d.order.paid_at)):''}</p><p><b>Campaign</b><br>${esc(d.order.campaign)}</p></div><hr><b>Requirements</b><p>${esc(d.order.description)}</p><p class="hint">Razorpay order: ${esc(d.order.razorpay_order_id)}</p></div><h3>Timeline history</h3><div class="timeline">${(d.events||[]).map(x=>`<div class="timeline-item"><div class="timeline-dot"></div><div><strong>${esc(label(x.event_type))}</strong><p>${esc(x.message||'')}</p><small>${esc(fmt(x.created_at))}</small></div></div>`).join('')||'<p>No events.</p>'}</div>`;
+ document.getElementById('files').innerHTML=(d.files||[]).map(f=>`<div class="tool"><b>${esc(f.file_type)}</b> · ${esc(f.file_name)} · ${esc(f.mime_type||'')} <button class="btn ghost file-open" data-id="${esc(f.file_id)}">Open private file</button></div>`).join('')||'<p class="hint">No files.</p>';
+ document.querySelectorAll('.file-open').forEach(b=>b.onclick=async()=>{try{const x=await act('/files/'+encodeURIComponent(b.dataset.id)+'/url');window.open(x.url,'_blank','noopener');}catch(e){document.getElementById('msg').textContent=e.message;}});
+ document.getElementById('messages').innerHTML=(d.messages||[]).map(x=>`<div class="tool"><b>${x.sender_type==='admin'?'Studio':'Customer'}</b><p>${esc(x.message)}</p><small>${esc(fmt(x.created_at))}</small></div>`).join('')||'<p class="hint">No messages.</p>';
+}
+document.getElementById('save').onclick=async()=>{try{await act('/orders/'+encodeURIComponent(order),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:document.getElementById('status').value,revision_count:Number(document.getElementById('revisionCount').value||0),admin_note:document.getElementById('note').value.trim()||undefined})});document.getElementById('note').value='';document.getElementById('msg').textContent='Order updated.';await load();}catch(e){document.getElementById('msg').textContent=e.message;}};
+document.getElementById('upload').onclick=async()=>{try{const f=document.getElementById('mp3').files[0];if(!f)throw Error('Choose an MP3 first.');await act('/orders/'+encodeURIComponent(order)+'/mp3',{method:'POST',headers:{'Content-Type':f.type||'audio/mpeg','X-File-Name':f.name},body:f});document.getElementById('msg').textContent='Song uploaded and marked READY.';document.getElementById('mp3').value='';await load();}catch(e){document.getElementById('msg').textContent=e.message;}};
+document.getElementById('send').onclick=async()=>{try{const body=document.getElementById('message').value.trim();if(!body)throw Error('Enter a message.');await act('/orders/'+encodeURIComponent(order)+'/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({body})});document.getElementById('message').value='';document.getElementById('msg').textContent='Message sent.';await load();}catch(e){document.getElementById('msg').textContent=e.message;}};
+load().catch(e=>document.getElementById('msg').textContent=e.message);
+</script>
+</body>
+</html>

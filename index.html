@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Studio Login | RacharlaGPT Music</title><link rel="stylesheet" href="/css/style.css"><script src="/js/config.js"></script></head>
+<body data-admin="true"><main class="form-page"><section class="form-shell"><div class="eyebrow">PRIVATE STUDIO</div><h1>RacharlaGPT Music Admin</h1><p>Use the private studio token configured on the server.</p><form id="login"><label>Studio access token<input id="password" type="password" autocomplete="current-password" required></label><button class="btn primary wide">Sign in</button></form><p id="msg" class="form-message"></p><p><a href="/">← Back to public site</a></p></section></main>
+<script>
+const api=String(window.RGM_CONFIG?.ADMIN_API_BASE||'').replace(/\/$/,''),msg=document.getElementById('msg');
+if(!api||api.includes('YOUR-'))msg.textContent='Studio API is not configured yet. Set ADMIN_API_BASE in js/config.js after deploying the admin-api Appwrite Function.';
+document.getElementById('login').onsubmit=async e=>{e.preventDefault();if(!api||api.includes('YOUR-'))return;try{const r=await fetch(api+'/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('password').value})});const d=await r.json();if(!r.ok)throw Error(d.error||'Login failed');sessionStorage.setItem('rgm_admin_token',d.token);location.href='/admin/dashboard.html';}catch(x){msg.textContent=x.message;}};
+</script></body></html>
