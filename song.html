@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Your Song | RacharlaGPT Music</title><meta name="robots" content="noindex,nofollow"><link rel="canonical" href="https://songs.racharlagpt.in/song.html"><link rel="stylesheet" href="/css/style.css"><script async src="https://www.googletagmanager.com/gtag/js?id=G-1W86QW7J5Y"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag("js",new Date());gtag("config","G-1W86QW7J5Y");</script><script src="/js/config.js"></script></head><body><div class="music-shower" aria-hidden="true"></div><header class="site-header"><a class="brand" href="/">♪ RacharlaGPT Music</a></header><main class="form-page"><section class="form-shell"><div class="eyebrow">YOUR SONG</div><h1>Your personalized song</h1><p id="state">Preparing your private song link…</p><div id="player"></div></section></main><script>
+const state=document.getElementById('state'),player=document.getElementById('player');
+const key='rgm_customer_session';
+const base=()=>String(window.RGM_CONFIG?.PUBLIC_API_BASE||'').replace(/\/$/,'');
+let session=null;
+(async()=>{
+  try{
+    const u=new URL(location.href),oldOrder=u.searchParams.get('order'),oldToken=u.searchParams.get('token');
+    if(oldOrder&&oldToken){
+      session={order_number:oldOrder,access_token:oldToken,saved_at:new Date().toISOString()};
+      localStorage.setItem(key,JSON.stringify(session));
+      history.replaceState({},document.title,'/song.html');
+    }else{
+      session=JSON.parse(localStorage.getItem(key)||'null');
+    }
+    if(!session?.order_number||!session?.access_token)throw Error('Your secure song session is not available on this browser.');
+    const r=await fetch(base()+'/orders/'+encodeURIComponent(session.order_number)+'/song',{
+      headers:{'X-Access-Token':session.access_token}
+    });
+    const d=await r.json();if(!r.ok)throw Error(d.error||'Song is not ready yet.');
+    state.textContent='Your song is ready. Tap play or download it.';
+    if(window.gtag)gtag('event','song_ready',{order_number:session.order_number});
+    player.innerHTML='<audio controls preload="metadata" style="width:100%" src="'+d.url+'"></audio><p><a class="btn primary wide" href="'+d.url+'" download="'+d.file_name+'">Download MP3 ↓</a></p><p class="hint">Your song is securely available whenever you return to your Song Journey.</p>';
+  }catch(e){state.textContent=e.message;}
+})();
+</script></body></html>

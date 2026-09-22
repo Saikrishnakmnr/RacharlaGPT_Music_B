@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Your Song Journey | RacharlaGPT Music</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="stylesheet" href="/css/style.css">
+<script src="/js/config.js"></script>
+</head>
+<body>
+<div class="music-shower" aria-hidden="true"></div>
+<header class="site-header"><a class="brand" href="/">♪ RacharlaGPT Music</a><div class="header-tools"><a class="header-link" href="/">Home</a></div></header>
+<main class="form-page">
+<section class="form-shell">
+<div class="eyebrow">YOUR SONG JOURNEY</div>
+<h1>Track My Song</h1>
+<p id="state">Checking your secure order…</p>
+<div id="details"></div>
+<div id="files"></div>
+<div id="timeline"></div>
+<div id="messages"></div>
+<div id="revisionBox" hidden>
+<h3>Need a revision?</h3>
+<p class="hint">Tell the production team exactly what you want changed.</p>
+<textarea id="revision" rows="4" maxlength="2000" placeholder="Example: Please correct the spelling of the name and change the final line…"></textarea>
+<button class="btn secondary wide" id="requestRevision">Request Revision</button>
+<p id="revisionMsg" class="form-message"></p>
+</div>
+<a class="btn primary wide" id="songLink" hidden>Open Song →</a>
+<label>Message our production team<textarea id="message" rows="4" maxlength="2000" placeholder="Ask a question or share a correction…"></textarea></label>
+<button class="btn secondary wide" id="send">Send Message</button>
+<p id="msg" class="form-message"></p>
+<div class="notice"><strong>Private customer access:</strong> your access is securely stored in this browser. It is not placed in the page URL.</div>
+</section>
+</main>
+<script>
+const key='rgm_customer_session';
+const state=document.getElementById('state'),details=document.getElementById('details'),files=document.getElementById('files'),timeline=document.getElementById('timeline'),messages=document.getElementById('messages'),link=document.getElementById('songLink'),revisionBox=document.getElementById('revisionBox');
+const base=()=>String(window.RGM_CONFIG?.PUBLIC_API_BASE||'').replace(/\/$/,'');
+const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+const fmt=v=>{try{return new Date(v).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'});}catch{return String(v||'')}};
+const label=v=>String(v||'').replaceAll('_',' ');
+let session=null;
+
+function getSession(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(key)||'null');
+    if(saved?.order_number&&saved?.access_token)return saved;
+  }catch{}
+  return null;
+}
+function saveSession(order,access){
+  session={order_number:order,access_token:access,saved_at:new Date().toISOString()};
+  localStorage.setItem(key,JSON.stringify(session));
+}
+async function load(){
+  try{
+    session=session||getSession();
+    // Migrate an existing old secret URL once, then immediately remove it from the address bar.
+    const u=new URL(location.href), oldOrder=u.searchParams.get('order'), oldToken=u.searchParams.get('token');
+    if(oldOrder&&oldToken){
+      saveSession(oldOrder,oldToken);
+      history.replaceState({},document.title,'/track.html');
+    }
+    session=session||getSession();
+    if(!session)throw Error('No paid song is connected to this browser yet. Complete payment on this device first.');
+    const order=session.order_number, token=session.access_token;
+    const r=await fetch(base()+'/orders/'+encodeURIComponent(order),{
+      cache:'no-store',
+      headers:{'X-Access-Token':token}
+    });
+    const d=await r.json();
+    if(!r.ok)throw Error((d.error||'Order not found')+' (HTTP '+r.status+')');
+    state.innerHTML='<strong>'+esc(label(d.status))+'</strong> · Payment <strong>'+esc(label(d.payment_status))+'</strong>';
+    details.innerHTML=`<div class="tool order-summary"><div class="summary-grid"><p><b>Order</b><br>${esc(d.order_number)}</p><p><b>Occasion</b><br>${esc(d.occasion)}</p><p><b>Amount</b><br>₹${Number(d.price||0).toLocaleString('en-IN')}</p><p><b>Created</b><br>${esc(fmt(d.created_at))}</p><p><b>Payment</b><br>${esc(label(d.payment_status))}${d.paid_at?' · '+esc(fmt(d.paid_at)):''}</p><p><b>Revisions</b><br>${Number(d.revision_count||0)}</p></div><hr><b>Your requirements</b><p>${esc(d.description)}</p></div>`;
+    files.innerHTML='<h3>Order files</h3>'+((d.files||[]).map(f=>`<div class="tool"><b>${esc(f.file_type||'file')}</b> · ${esc(f.file_name||'')}</div>`).join('')||'<p class="hint">No files uploaded.</p>');
+    timeline.innerHTML='<h3>Order timeline</h3><div class="timeline">'+((d.events||[]).map(e=>`<div class="timeline-item"><div class="timeline-dot"></div><div><strong>${esc(label(e.event_type))}</strong><p>${esc(e.message||'')}</p><small>${esc(fmt(e.created_at))}</small></div></div>`).join('')||'<p>No timeline events yet.</p>')+'</div>';
+    messages.innerHTML='<h3>Messages</h3>'+((d.messages||[]).map(x=>`<div class="tool"><b>${x.sender_type==='admin'?'Studio':'You'}</b><p>${esc(x.message)}</p><small>${esc(fmt(x.created_at))}</small></div>`).join('')||'<p class="hint">No messages yet. This section refreshes automatically.</p>');
+    revisionBox.hidden=!['READY','DELIVERED'].includes(d.status);
+    if(d.song_ready){
+      link.hidden=false;
+      link.href='/song.html';
+      link.textContent=d.status==='DELIVERED'?'Open / Download Song →':'Song Ready — Open Song →';
+    }else link.hidden=true;
+  }catch(e){state.textContent=e.message;}
+}
+document.getElementById('send').onclick=async()=>{
+  const body=document.getElementById('message').value.trim(),msg=document.getElementById('msg');
+  if(!body){msg.textContent='Enter a message first.';return;}
+  try{
+    session=session||getSession(); if(!session)throw Error('Your secure customer session is missing.');
+    const r=await fetch(base()+'/orders/'+encodeURIComponent(session.order_number)+'/messages',{
+      method:'POST',headers:{'Content-Type':'application/json','X-Access-Token':session.access_token},body:JSON.stringify({body})
+    });
+    const d=await r.json();if(!r.ok)throw Error(d.error||'Could not send message');
+    document.getElementById('message').value='';msg.textContent='Message sent.';await load();
+  }catch(e){msg.textContent=e.message;}
+};
+document.getElementById('requestRevision').onclick=async()=>{
+  const body=document.getElementById('revision').value.trim(),msg=document.getElementById('revisionMsg');
+  if(!body){msg.textContent='Describe the revision you need.';return;}
+  try{
+    session=session||getSession();if(!session)throw Error('Your secure customer session is missing.');
+    const r=await fetch(base()+'/orders/'+encodeURIComponent(session.order_number)+'/revision',{
+      method:'POST',headers:{'Content-Type':'application/json','X-Access-Token':session.access_token},body:JSON.stringify({body})
+    });
+    const d=await r.json();if(!r.ok)throw Error(d.error||'Could not request revision');
+    document.getElementById('revision').value='';msg.textContent='Revision request sent.';await load();
+  }catch(e){msg.textContent=e.message;}
+};
+load();
+setInterval(load,10000);
+</script>
+</body>
+</html>
