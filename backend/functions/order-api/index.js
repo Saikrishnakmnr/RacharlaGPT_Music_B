@@ -121,6 +121,27 @@ function verifyRazorpayPayment(orderId, paymentId, signature) {
   const expected = crypto.createHmac('sha256', RZP_SECRET || '').update(`${orderId}|${paymentId}`).digest('hex');
   return !!signature && signature.length === expected.length && same(signature, expected);
 }
+
+function verifyWebhookSignature(raw, signature) {
+  const expected = crypto.createHmac('sha256', env('RAZORPAY_WEBHOOK_SECRET')).update(raw).digest('hex');
+  return !!signature && signature.length === expected.length && same(signature, expected);
+}
+async function markPaymentPaid(order, paymentId, razorpayOrderId, source = 'razorpay') {
+  const now = new Date().toISOString();
+  const wasPaid = order.payment_status === 'PAID';
+  await update(ORDERS, order.$id, {
+    payment_status: 'PAID',
+    status: order.status === 'ORDER_RECEIVED' ? 'PAYMENT_VERIFIED' : order.status,
+    paid_at: order.paid_at || now
+  });
+  if (!wasPaid) {
+    await event(order.order_number, 'PAYMENT_SUCCESS', 'Payment verified and captured by Razorpay.', source, {
+      payment_id: paymentId || null,
+      razorpay_order_id: razorpayOrderId || order.razorpay_order_id
+    });
+  }
+  return now;
+}
 async function fileToken(fileId) {
   const exp = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const d = await aw(`/tokens/buckets/${encodeURIComponent(BUCKET)}/files/${encodeURIComponent(fileId)}`, {
@@ -174,6 +195,23 @@ export default async ({ req, res, error }) => {
       return json(res, { price: price(), normal_price: NORMAL, campaign_active: active(), campaign_name: active() ? CAMPAIGN_NAME : null, currency: 'INR' });
     }
 
+    if (req.method === 'POST' && path === '/recover') {
+      const b = req.bodyJson || {};
+      const email = String(b.email || '').trim().toLowerCase();
+      const paymentId = String(b.razorpay_payment_id || b.payment_id || '').trim();
+      if (!/^\S+@\S+\.\S+$/.test(email) || !paymentId) return bad(res, 'Enter your order email and Razorpay Payment ID');
+      const payment = await rzpPayment(paymentId);
+      if (String(payment.status || '').toLowerCase() !== 'captured') return bad(res, 'This Razorpay payment is not captured yet', 409);
+      const razorpayOrderId = String(payment.order_id || '');
+      if (!razorpayOrderId) return bad(res, 'Razorpay order information is missing', 400);
+      const o = (await rows(ORDERS)).find(r => String(r?.razorpay_order_id || '') === razorpayOrderId) || null;
+      if (!o || String(o.email || '').toLowerCase() !== email) return bad(res, 'We could not verify that payment for this email', 404);
+      const t = token();
+      await update(ORDERS, o.$id, { access_token_hash: hash(t) });
+      await event(o.order_number, 'ACCESS_LINK_RECOVERED', 'Customer recovered a private order link.', 'customer', { payment_id: paymentId, razorpay_order_id: razorpayOrderId });
+      return json(res, { ok: true, order_number: o.order_number, track_url: `${SITE}/track.html?order=${encodeURIComponent(o.order_number)}&token=${encodeURIComponent(t)}` });
+    }
+
     if (req.method === 'POST' && path === '/orders') {
       const b = req.bodyJson || {};
       const name = String(b.customer_name || '').trim();
@@ -221,6 +259,30 @@ export default async ({ req, res, error }) => {
       ));
     }
 
+    if (req.method === 'POST' && path === '/webhooks/razorpay') {
+      const raw = req.bodyText || '';
+      const signature = req.headers['x-razorpay-signature'] || '';
+      if (!env('RAZORPAY_WEBHOOK_SECRET')) return bad(res, 'Webhook secret is not configured', 500);
+      if (!verifyWebhookSignature(raw, signature)) return bad(res, 'Invalid webhook signature', 401);
+      let body;
+      try { body = JSON.parse(raw); } catch { return bad(res, 'Invalid webhook JSON'); }
+      const payment = body.payload?.payment?.entity;
+      const razorpayOrder = body.payload?.order?.entity;
+      const paymentId = String(payment?.id || '');
+      const razorpayOrderId = String(payment?.order_id || razorpayOrder?.id || '');
+      const orderNumber = payment?.notes?.order_number || payment?.notes?.receipt || razorpayOrder?.notes?.order_number || razorpayOrder?.receipt;
+      const o = orderNumber ? await findRow(ORDERS, 'order_number', orderNumber) : (razorpayOrderId ? (await rows(ORDERS)).find(r => String(r?.razorpay_order_id || '') === razorpayOrderId) || null : null);
+      if (!o) return json(res, { ok: true, ignored: true });
+      if (o.razorpay_order_id && razorpayOrderId && String(o.razorpay_order_id) !== razorpayOrderId) return bad(res, 'Order mismatch', 400);
+      if (body.event === 'order.paid' || body.event === 'payment.captured') {
+        await markPaymentPaid(o, paymentId, razorpayOrderId, 'razorpay-webhook');
+      } else if (body.event === 'payment.failed') {
+        await update(ORDERS, o.$id, { payment_status: 'FAILED' });
+        await event(o.order_number, 'PAYMENT_FAILED', payment?.error_description || 'Razorpay payment failed.', 'razorpay-webhook', paymentId ? { payment_id: paymentId } : null);
+      }
+      return json(res, { ok: true });
+    }
+
     m = path.match(/^\/orders\/([^/]+)\/payment\/verify$/);
     if (req.method === 'POST' && m) {
       const no = decodeURIComponent(m[1]);
@@ -238,10 +300,7 @@ export default async ({ req, res, error }) => {
       const payment = await rzpPayment(paymentId);
       if (String(payment.order_id || '') !== razorpayOrderId) return bad(res, 'Payment order mismatch', 400);
       if (String(payment.status || '').toLowerCase() !== 'captured') return bad(res, `Payment status is ${payment.status || 'unknown'}; waiting for capture`, 409);
-      const wasPaid = o.payment_status === 'PAID';
-      const now = new Date().toISOString();
-      await update(ORDERS, o.$id, { payment_status: 'PAID', status: o.status === 'ORDER_RECEIVED' ? 'PAYMENT_VERIFIED' : o.status, paid_at: o.paid_at || now });
-      if (!wasPaid) await event(no, 'PAYMENT_SUCCESS', 'Payment verified and captured by Razorpay.', 'razorpay', { payment_id: paymentId, razorpay_order_id: razorpayOrderId, method: payment.method || null, amount: payment.amount || null, currency: payment.currency || 'INR' });
+      const now = await markPaymentPaid(o, paymentId, razorpayOrderId, 'razorpay');
       return json(res, { ok: true, payment_status: 'PAID', paid_at: o.paid_at || now, track_url: `${SITE}/track.html?order=${encodeURIComponent(no)}&token=${encodeURIComponent(access)}` });
     }
 
