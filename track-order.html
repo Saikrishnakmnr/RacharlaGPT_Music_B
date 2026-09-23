@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Track My Song | RacharlaGPT Music</title><meta name="robots" content="noindex,nofollow">
+<link rel="stylesheet" href="/css/style.css"><script src="/js/config.js"></script>
+</head>
+<body>
+<div class="music-shower" aria-hidden="true"></div>
+<header class="site-header"><a class="brand" href="/">♪ RacharlaGPT Music</a><a href="/">← Home</a></header>
+<main class="form-page"><section class="form-shell">
+<div class="eyebrow">CUSTOMER AREA</div><h1>Track My Song</h1>
+<p>Enter the <strong>RM Order Number</strong> and the <strong>email address used for your order</strong>. No password, OTP, Google login or private link is required.</p>
+<form id="lookup">
+<label>RM Order Number<input id="order" required placeholder="RM-20260922-XXXXXX" autocomplete="off"></label>
+<label>Email used for the order<input id="email" type="email" required placeholder="you@example.com" autocomplete="email"></label>
+<button class="btn primary wide">Open My Song Journey →</button>
+</form>
+<p id="msg" class="form-message"></p>
+<div class="notice"><strong>Keep your RM number</strong><br>Your RM number is your order reference. We also send it in your order confirmation email.</div>
+</section></main>
+<footer>© 2026 RacharlaGPT Music · <a href="/privacy.html">Privacy</a> · <a href="/terms.html">Terms</a></footer>
+<script>
+const form=document.getElementById('lookup'),msg=document.getElementById('msg'),base=String(window.RGM_CONFIG?.PUBLIC_API_BASE||'').replace(/\/$/,'');
+const existing=sessionStorage.getItem('rgm_customer_session');if(existing){try{const d=JSON.parse(existing);if(d?.order_number&&d?.email){document.getElementById('order').value=d.order_number;document.getElementById('email').value=d.email;}}catch{}}
+form.addEventListener('submit',async e=>{
+ e.preventDefault();msg.textContent='Checking your order…';msg.className='form-message';
+ const order=document.getElementById('order').value.trim(),email=document.getElementById('email').value.trim().toLowerCase();
+ try{
+  const r=await fetch(base+'/orders/'+encodeURIComponent(order),{headers:{'X-Customer-Email':email},cache:'no-store'});
+  const d=await r.json();if(!r.ok)throw Error(d.error||'Order not found. Check your RM number and email.');
+  sessionStorage.setItem('rgm_customer_session',JSON.stringify({order_number:order,email,customer_name:d.customer_name||'',created_at:new Date().toISOString()}));
+  location.href='/track.html';
+ }catch(err){msg.textContent=err.message;msg.className='form-message error';}
+});
+</script></body></html>

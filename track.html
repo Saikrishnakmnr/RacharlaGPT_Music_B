@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Your Song Journey | RacharlaGPT Music</title><meta name="robots" content="noindex,nofollow"><link rel="stylesheet" href="/css/style.css"><script src="/js/config.js"></script></head>
+<body><div class="music-shower" aria-hidden="true"></div>
+<header class="site-header"><a class="brand" href="/">♪ RacharlaGPT Music</a><div class="header-tools"><a class="header-link" href="/track-order.html">Track another order</a><a class="header-link" href="/">Home</a></div></header>
+<main class="form-page"><section class="form-shell">
+<div class="eyebrow">MY SONG JOURNEY</div><h1 id="heading">Your order</h1><p id="state">Checking your order…</p>
+<div id="details"></div><div id="files"></div><div id="timeline"></div><div id="messages"></div>
+<div id="revisionBox" hidden><h3>Need a revision?</h3><p class="hint">Tell the production team exactly what you want changed.</p><textarea id="revision" rows="4" maxlength="2000" placeholder="Example: Please correct the spelling of the name and change the final line…"></textarea><button class="btn secondary wide" id="requestRevision">Request Revision</button><p id="revisionMsg" class="form-message"></p></div>
+<a class="btn primary wide" id="songLink" hidden>Open Song →</a>
+<label>Message our production team<textarea id="message" rows="4" maxlength="2000" placeholder="Ask a question or share a correction…"></textarea></label><button class="btn secondary wide" id="send">Send Message</button><p id="msg" class="form-message"></p>
+</section></main>
+<script>
+const state=document.getElementById('state'),details=document.getElementById('details'),files=document.getElementById('files'),timeline=document.getElementById('timeline'),messages=document.getElementById('messages'),link=document.getElementById('songLink'),revisionBox=document.getElementById('revisionBox'),base=()=>String(window.RGM_CONFIG?.PUBLIC_API_BASE||'').replace(/\/$/,'');
+const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+const fmt=v=>{try{return new Date(v).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'});}catch{return String(v||'')}};
+const session=(()=>{try{return JSON.parse(sessionStorage.getItem('rgm_customer_session')||'null')}catch{return null}})();
+if(!session?.order_number||!session?.email){location.href='/track-order.html';}
+async function api(path,opts={}){const r=await fetch(base()+path,{...opts,headers:{'X-Customer-Email':session.email,...(opts.headers||{})},cache:'no-store'});const d=await r.json();if(!r.ok)throw Error(d.error||'Request failed');return d;}
+function render(d){
+ document.getElementById('heading').textContent=`Your song journey · ${d.order_number}`;
+ state.textContent=`${d.status.replaceAll('_',' ')} · Payment ${d.payment_status}`;
+ details.innerHTML=`<div class="tool"><h3>${esc(d.occasion)}</h3><p><strong>RM:</strong> ${esc(d.order_number)}</p><p><strong>Amount:</strong> ₹${Number(d.price||0).toLocaleString('en-IN')}</p><p><strong>Customer:</strong> ${esc(d.customer_name)}</p></div>`;
+ files.innerHTML=d.files?.length?`<div class="tool"><h3>Order files</h3>${d.files.map(f=>`<p>${esc(f.file_type)} · ${esc(f.file_name)}</p>`).join('')}</div>`:'';
+ timeline.innerHTML=`<div class="tool"><h3>Timeline</h3>${(d.events||[]).map(e=>`<p><strong>${esc(String(e.event_type||'').replaceAll('_',' '))}</strong><br><span class="hint">${esc(fmt(e.created_at))}${e.message?' · '+esc(e.message):''}</span></p>`).join('')}</div>`;
+ messages.innerHTML=`<div class="tool"><h3>Messages</h3>${(d.messages||[]).map(m=>`<p><strong>${esc(m.sender_type)}</strong>: ${esc(m.message)}<br><span class="hint">${esc(fmt(m.created_at))}</span></p>`).join('')||'<p>No messages yet.</p>'}</div>`;
+ revisionBox.hidden=!(d.status==='READY'||d.status==='DELIVERED');
+ link.hidden=!(d.song_ready);link.href='/song.html';link.textContent='Open Song →';
+}
+async function load(){try{render(await api('/orders/'+encodeURIComponent(session.order_number)));}catch(e){state.textContent=e.message;state.className='form-message error';}}
+document.getElementById('send').onclick=async()=>{const b=document.getElementById('message').value.trim();if(!b)return;try{await api('/orders/'+encodeURIComponent(session.order_number)+'/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({body:b})});document.getElementById('message').value='';document.getElementById('msg').textContent='Message sent.';await load();}catch(e){document.getElementById('msg').textContent=e.message;}};
+document.getElementById('requestRevision').onclick=async()=>{const b=document.getElementById('revision').value.trim();if(!b)return;try{await api('/orders/'+encodeURIComponent(session.order_number)+'/revision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({body:b})});document.getElementById('revision').value='';document.getElementById('revisionMsg').textContent='Revision request sent.';await load();}catch(e){document.getElementById('revisionMsg').textContent=e.message;}};
+load();setInterval(load,10000);
+</script></body></html>
