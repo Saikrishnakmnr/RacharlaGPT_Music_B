@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Studio Dashboard | RacharlaGPT Music</title>
+<link rel="stylesheet" href="/css/style.css"><script src="/js/config.js"></script>
+</head>
+<body data-admin="true">
+<header class="site-header"><a class="brand" href="/">♪ RacharlaGPT Music</a><div class="header-tools"><a class="header-link" href="/">Public site</a><button class="btn ghost" id="logout">Sign out</button></div></header>
+<main class="content-section"><div class="section-inner">
+<div class="eyebrow">PRIVATE STUDIO</div><h1>Orders & customer history</h1>
+<div id="summary" class="summary-cards"></div><div class="tool" id="serviceControl"><div class="eyebrow">SERVICE CONTROL</div><h3 id="serviceTitle">Checking service…</h3><p id="serviceMessage" class="hint"></p><p class="hint">Customer message: “We are currently unable to accept new song orders. Please come back later.”</p><div class="actions"><button class="btn secondary" id="serviceToggle">Checking…</button><button class="btn ghost" id="enableAlerts">Enable sound alerts</button></div><p id="serviceMsg" class="form-message"></p></div><div id="newOrderAlert" class="notice" hidden><strong>🔔 New order received</strong><span id="newOrderText"></span></div>
+<div class="admin-toolbar"><input id="search" placeholder="Search order, customer, email or occasion…"><select id="filter"><option value="">All statuses</option><option>ORDER_RECEIVED</option><option>PAYMENT_VERIFIED</option><option>REQUIREMENTS_RECEIVED</option><option>IN_PRODUCTION</option><option>QUALITY_CHECK</option><option>READY</option><option>DELIVERED</option><option>NEEDS_MORE_INFORMATION</option><option>REVISION_REQUESTED</option></select><button class="btn secondary" id="refresh">Refresh</button></div>
+<div id="orders" class="grid"></div>
+</div></main>
+<script>
+const api=String(window.RGM_CONFIG?.ADMIN_API_BASE||'').replace(/\/$/,''),token=sessionStorage.getItem('rgm_admin_token');
+if(!token||!api||api.includes('YOUR-'))location.href='/admin/';
+const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+const fmt=v=>{try{return new Date(v).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'});}catch{return String(v||'')}};
+let data=[],previousOrderKeys=new Set(),alertSoundEnabled=false,audioCtx=null;
+document.getElementById('logout').onclick=()=>{sessionStorage.removeItem('rgm_admin_token');location.href='/admin/'};
+async function act(url,opts={}){const r=await fetch(api+url,{...opts,headers:{Authorization:'Bearer '+token,...(opts.headers||{})},cache:'no-store'});if(r.status===401){location.href='/admin/';return null;}const d=await r.json();if(!r.ok)throw Error(d.error||'Request failed');return d;}
+function beep(){if(!alertSoundEnabled)return;try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=880;g.gain.value=.06;o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+.25);}catch{}}
+async function load(){
+  const box=document.getElementById('orders');
+  try{
+    const [d,sv]=await Promise.all([act('/orders'),act('/service-status')]);
+    if(!d)return; data=d.orders||[];
+    const keys=new Set(data.map(o=>String(o.order_number)));
+    const isFirst=previousOrderKeys.size===0;
+    const fresh=data.filter(o=>!previousOrderKeys.has(String(o.order_number)));
+    if(!isFirst&&fresh.length){document.getElementById('newOrderAlert').hidden=false;document.getElementById('newOrderText').textContent=' '+fresh.map(o=>`${o.order_number} · ${o.customer_name} · ₹${Number(o.price||0).toLocaleString('en-IN')}`).join(' | ');beep();}
+    previousOrderKeys=keys;
+    const s=d.summary||{};
+    document.getElementById('summary').innerHTML=[['Total',s.total||0],['Paid',s.paid||0],['Pending payment',s.pending_payment||0],['In production',s.in_production||0],['Ready / delivered',s.ready||0],['Revenue',`₹${Number(s.revenue||0).toLocaleString('en-IN')}`]].map(x=>`<div class="tool stat"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join('');
+    render();
+    document.getElementById('serviceTitle').textContent=sv.enabled?'🟢 Accepting New Orders':'🔴 Service Temporarily Disabled';
+    document.getElementById('serviceMessage').textContent=sv.message||'';
+        const btn=document.getElementById('serviceToggle');btn.textContent=sv.enabled?'Disable Service':'Enable Service';btn.dataset.enabled=String(sv.enabled);
+  }catch(e){box.innerHTML=`<div class="tool"><strong>Dashboard error</strong><p>${esc(e.message)}</p></div>`;}
+}
+function render(){const q=document.getElementById('search').value.trim().toLowerCase(),f=document.getElementById('filter').value;const list=data.filter(o=>(!f||o.status===f)&&(!q||[o.order_number,o.customer_name,o.email,o.occasion,o.status,o.payment_status].some(v=>String(v||'').toLowerCase().includes(q))));document.getElementById('orders').innerHTML=list.map(o=>`<a class="tool order-card" href="/admin/order.html?order=${encodeURIComponent(o.order_number)}"><div class="order-top"><b>${esc(o.order_number)}</b><span class="status-pill">${esc(String(o.status||'').replaceAll('_',' '))}</span></div><h3>${esc(o.customer_name)} · ${esc(o.occasion)}</h3><p>${esc(o.email)}</p><p><strong>₹${Number(o.price||0).toLocaleString('en-IN')}</strong> · Payment: ${esc(o.payment_status)} · Created: ${esc(fmt(o.created_at))}</p><p>Revisions: ${Number(o.revision_count||0)} · Downloads: ${Number(o.download_count||0)}</p><strong>Open order →</strong></a>`).join('')||'<div class="tool"><p>No matching orders.</p></div>';}
+document.getElementById('search').oninput=render;document.getElementById('filter').onchange=render;document.getElementById('refresh').onclick=()=>load();
+document.getElementById('enableAlerts').onclick=async()=>{try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();await audioCtx.resume();alertSoundEnabled=true;document.getElementById('enableAlerts').textContent='🔔 Sound alerts enabled';beep();}catch{document.getElementById('enableAlerts').textContent='Browser blocked sound';}};
+document.getElementById('serviceToggle').onclick=async()=>{const b=document.getElementById('serviceToggle');const enabled=b.dataset.enabled!=='true';b.disabled=true;try{await act('/service-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});await load();}catch(e){document.getElementById('serviceMsg').textContent=e.message;}finally{b.disabled=false;}};
+load();setInterval(load,10000);
+</script>
+</body>
+</html>
